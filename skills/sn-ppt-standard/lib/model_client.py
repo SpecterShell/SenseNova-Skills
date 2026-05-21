@@ -2,8 +2,8 @@
 
 Reads env from .env (via python-dotenv) and hits two chat endpoints:
 
-    llm(system, user) -> str                              # SN_TEXT_* / SN_CHAT_* /v1/chat/completions
-    vlm(system, user, images) -> str                      # SN_VISION_* / SN_CHAT_* /v1/chat/completions
+    llm(system, user) -> str                              # SN_TEXT_* / SN_CHAT_* chat/completions
+    vlm(system, user, images) -> str                      # SN_VISION_* / SN_CHAT_* chat/completions
 
 **T2I is intentionally NOT here.** Image generation routes through
 sn-image-base/scripts/sn_agent_runner.py sn-image-generate. This module is LLM/VLM only.
@@ -21,13 +21,17 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 try:
     from dotenv import load_dotenv
 except ImportError:
     def load_dotenv(*a, **kw): return False  # noqa
 
-import httpx
+try:
+    import httpx
+except ImportError:  # pragma: no cover
+    httpx = None  # type: ignore[assignment]
 
 
 _DEFAULT_CHAT_BASE_URL = "https://token.sensenova.cn/v1"
@@ -117,6 +121,14 @@ class MissingConfigError(ModelClientError):
     pass
 
 
+def _require_httpx() -> None:
+    if httpx is None:
+        raise MissingConfigError(
+            "httpx is required but not installed. "
+            "Install it with: pip install httpx"
+        )
+
+
 # ---------------------------------------------------------------------------
 # LLM / VLM  (OpenAI-compatible chat/completions)
 # ---------------------------------------------------------------------------
@@ -135,6 +147,24 @@ _RETRIABLE_STATUS_CODES = {502, 503, 504}
 
 def _build_llm_timeout(timeout_s: float) -> httpx.Timeout:
     return httpx.Timeout(timeout_s, connect=_LLM_CONNECT_TIMEOUT_S, write=_LLM_WRITE_TIMEOUT_S)
+
+
+def _chat_completions_url(base_url: str) -> str:
+    """Build an OpenAI-compatible chat endpoint without duplicating `/v1`.
+
+    `SN_CHAT_BASE_URL` is commonly configured as either:
+    - `https://host`                    -> `https://host/v1/chat/completions`
+    - `https://host/v1`                 -> `https://host/v1/chat/completions`
+    - `https://host/custom/openai/v1`   -> `https://host/custom/openai/v1/chat/completions`
+
+    The previous implementation unconditionally appended `/v1/chat/completions`,
+    which produced `/v1/v1/chat/completions` when the base already included
+    the version path.
+    """
+    base = base_url.rstrip("/")
+    parsed = urlparse(base)
+    endpoint = "/v1/chat/completions" if not parsed.path else "/chat/completions"
+    return f"{base}{endpoint}"
 
 
 def _is_transient_llm_error(exc: httpx.HTTPError) -> bool:
@@ -206,11 +236,12 @@ def llm(system_prompt: str, user_prompt: str, *, model: str | None = None,
     cfg = LLMConfig.from_env()
     _require(cfg.api_key, "SN_TEXT_API_KEY / SN_CHAT_API_KEY")
     _require(cfg.base_url, "SN_TEXT_BASE_URL / SN_CHAT_BASE_URL")
+    _require_httpx()
     timeout_s = float(cfg.timeout if timeout is None else timeout)
     max_attempts = max(1, int(retries) + 1)
     timeout_cfg = _build_llm_timeout(timeout_s)
 
-    url = f"{cfg.base_url.rstrip('/')}/chat/completions"
+    url = _chat_completions_url(cfg.base_url)
     payload: dict[str, Any] = {
         "model": model or _require(cfg.model, "SN_TEXT_MODEL / SN_CHAT_MODEL"),
         "messages": [
@@ -262,6 +293,7 @@ def vlm(system_prompt: str, user_prompt: str, images: list[str | Path], *,
     cfg = VLMConfig.from_env()
     _require(cfg.api_key, "SN_VISION_API_KEY / SN_CHAT_API_KEY")
     _require(cfg.base_url, "SN_VISION_BASE_URL / SN_CHAT_BASE_URL")
+    _require_httpx()
 
     content: list[dict[str, Any]] = [{"type": "text", "text": user_prompt}]
     for img in images:
@@ -275,7 +307,7 @@ def vlm(system_prompt: str, user_prompt: str, images: list[str | Path], *,
             "image_url": {"url": f"data:{mime};base64,{b64}"},
         })
 
-    url = f"{cfg.base_url.rstrip('/')}/chat/completions"
+    url = _chat_completions_url(cfg.base_url)
     payload = {
         "model": model or _require(cfg.model, "SN_VISION_MODEL / SN_CHAT_MODEL"),
         "messages": [
