@@ -28,7 +28,10 @@ try:
 except ImportError:
     def load_dotenv(*a, **kw): return False  # noqa
 
-import httpx
+try:
+    import httpx
+except ImportError:  # pragma: no cover
+    httpx = None  # type: ignore[assignment]
 
 
 _DEFAULT_CHAT_BASE_URL = "https://token.sensenova.cn/v1"
@@ -116,6 +119,14 @@ class ModelClientError(RuntimeError):
 
 class MissingConfigError(ModelClientError):
     pass
+
+
+def _require_httpx() -> None:
+    if httpx is None:
+        raise MissingConfigError(
+            "httpx is required but not installed. "
+            "Install it with: pip install httpx"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +236,7 @@ def llm(system_prompt: str, user_prompt: str, *, model: str | None = None,
     cfg = LLMConfig.from_env()
     _require(cfg.api_key, "SN_TEXT_API_KEY / SN_CHAT_API_KEY")
     _require(cfg.base_url, "SN_TEXT_BASE_URL / SN_CHAT_BASE_URL")
+    _require_httpx()
     timeout_s = float(cfg.timeout if timeout is None else timeout)
     max_attempts = max(1, int(retries) + 1)
     timeout_cfg = _build_llm_timeout(timeout_s)
@@ -281,6 +293,7 @@ def vlm(system_prompt: str, user_prompt: str, images: list[str | Path], *,
     cfg = VLMConfig.from_env()
     _require(cfg.api_key, "SN_VISION_API_KEY / SN_CHAT_API_KEY")
     _require(cfg.base_url, "SN_VISION_BASE_URL / SN_CHAT_BASE_URL")
+    _require_httpx()
 
     content: list[dict[str, Any]] = [{"type": "text", "text": user_prompt}]
     for img in images:
