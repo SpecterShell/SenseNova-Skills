@@ -22,6 +22,9 @@ triggers:
 
 # sn-ppt-standard
 
+> **⚠️ This skill must be invoked through .** Never start here directly — the entry skill collects parameters and writes  +  that this skill requires. If you arrived here without those files, stop and tell the user to enter via  or "生成 PPT".
+
+
 This skill is **self-contained** — no dependency on `sn-image-base` for LLM/VLM (T2I still goes through `sn-image-base`). Every call through `$SKILL_DIR/scripts/run_stage.py`. Every subcommand is deterministic: one input set → one output artifact → one-line JSON status.
 
 ## Preconditions
