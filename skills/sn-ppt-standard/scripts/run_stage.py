@@ -293,8 +293,8 @@ def cmd_preflight(deck: Path) -> int:
     if not ip_path.exists():
         return _fail("info_pack.json missing")
     tp = _load_json(tp_path)
-    if tp.get("ppt_mode") != "standard":
-        return _fail(f"ppt_mode is {tp.get('ppt_mode')!r}, expected 'standard'")
+    if tp.get("ppt_mode") not in {"standard", "fast"}:
+        return _fail(f"ppt_mode is {tp.get('ppt_mode')!r}, expected 'standard' or 'fast'")
     (deck / "pages").mkdir(exist_ok=True)
     (deck / "images").mkdir(exist_ok=True)
 
