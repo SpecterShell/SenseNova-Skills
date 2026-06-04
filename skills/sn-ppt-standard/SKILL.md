@@ -132,7 +132,11 @@ $R page-html     --deck-dir $D --page N
 # Concurrency for batch-page-html: 1 (≤4 pages), 2 (5-8 pages), 4 (9+ pages).
 # Concurrency for batch-gen-image: default 4.
 $R batch-gen-image  --deck-dir $D [--concurrency 4]
-$R batch-page-html  --deck-dir $D --concurrency N
+$R batch-page-html  --deck-dir $D --concurrency N [--start-page S --end-page E]
+
+# For large decks, split into ranges to stay within the 300s execution limit:
+$R batch-page-html  --deck-dir $D --concurrency 4 --start-page 1 --end-page 8
+$R batch-page-html  --deck-dir $D --concurrency 4 --start-page 9 --end-page 16
 
 $R export        --deck-dir $D              # -> <deck_id>.pptx
 ```
@@ -152,7 +156,7 @@ When `ppt_mode == "fast"`: **skip this checkpoint.** Proceed directly through al
 
 `batch-gen-image` serializes writes to `asset_plan.json` under a process-local lock so concurrent workers don't clobber each other.
 
-**Avoid timeout on large decks.** Hermes has a 300s execution limit. A single `batch-page-html` with many pages can exceed this. For >8 pages, prefer individual `page-html` commands — each finishes well within the limit and gives visible progress. If you must batch, split into smaller groups across multiple execs (e.g., pages 1-4, then 5-8, then 9-12). For ≤8 pages, individual commands are always preferred.
+**Split large decks into ranges.** Hermes has a 300s execution limit. For >8 pages, use `--start-page` / `--end-page` to split work across multiple execs, each with its own concurrency. For ≤8 pages, a single batch is fine. Example for 16 pages: batch 1-8 and batch 9-16 as separate execs.
 
 ### How `page-html` works (two LLM calls per page)
 
