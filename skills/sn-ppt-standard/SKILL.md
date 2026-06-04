@@ -152,7 +152,7 @@ When `ppt_mode == "fast"`: **skip this checkpoint.** Proceed directly through al
 
 `batch-gen-image` serializes writes to `asset_plan.json` under a process-local lock so concurrent workers don't clobber each other.
 
-**Prefer individual commands for small decks.** For ≤4 pages, use individual `page-html` commands — one page per exec gives visible progress. For 5+ pages, use `batch-page-html` with the concurrency listed above.
+**Avoid timeout on large decks.** Hermes has a 300s execution limit. A single `batch-page-html` with many pages can exceed this. For >8 pages, prefer individual `page-html` commands — each finishes well within the limit and gives visible progress. If you must batch, split into smaller groups across multiple execs (e.g., pages 1-4, then 5-8, then 9-12). For ≤8 pages, individual commands are always preferred.
 
 ### How `page-html` works (two LLM calls per page)
 
